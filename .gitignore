@@ -1,1 +1,3 @@
 sync-service/env
+sync-service/src/__pycache__
+sync-service/src/clients/__pycache__
