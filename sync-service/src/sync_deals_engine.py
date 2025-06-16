@@ -3,8 +3,6 @@ import requests
 import base64
 import httpx
 import logging
-from src.state import get_nh_by_pd, map_pd_to_nh, map_nh_to_pd, get_pd_by_nh
-from src.clients.pipedrive import get_item
 from src.clients.nethunt import nethunt_client
 
 
@@ -56,7 +54,7 @@ async def update_nethunt_record(record_id: str, fields: dict):
 PIPEDRIVE_API_TOKEN = "e68c1501ba119489fc7690a81488e504f7c530f4"
 PIPEDRIVE_BASE_URL = "https://api.pipedrive.com/v1"
 
-async def handle_activity_webhook(body: dict):
+async def handle_deals_webhook(body: dict):
     current = body.get("data", {})
     previous = body.get("previous", {})
     activity_id = str(current.get("id"))
@@ -96,13 +94,11 @@ async def handle_activity_webhook(body: dict):
         person_data = person_response.json()
         logging.info(f"Person data for ID {person_id}: {person_data}")
 
-        mapped_fields = extract_person_data_for_nethunt(person_data)
-        logging.info(f"Mapped fields for NetHunt: {mapped_fields}")
 
         # ------------------------
         # Deal fetch and folder/record ID extraction
         # ------------------------
-        deal_id = current.get("deal_id")
+        deal_id = current.get("id")
         nethunt_folder_id = None
         nethunt_record_id = None
 
@@ -124,10 +120,15 @@ async def handle_activity_webhook(body: dict):
             deal_fields = deal_data.get("data", {})
             nethunt_folder_id = deal_fields.get(folder_id_key)
             nethunt_record_id = deal_fields.get(record_id_key)
+            
+            
+            mapped_fields = extract_person_data_for_nethunt(deal_data)
+            logging.info(f"Mapped fields for NetHunt: {mapped_fields}")
 
             if not nethunt_folder_id or not nethunt_record_id:
                 logging.warning(f"NetHunt folder or record ID not found in deal {deal_id}")
                 return
+            
 
             logging.info(f"NetHunt folder_id: {nethunt_folder_id}, record_id: {nethunt_record_id}")
 
@@ -139,44 +140,115 @@ async def handle_activity_webhook(body: dict):
             api_key = "30741f0a-d62d-4703-b0d4-0a03fe6f8782"
             credentials = f"{email}:{api_key}"
             encoded_credentials = base64.b64encode(credentials.encode()).decode()
-
+            logging.info(f"Updating NetHunt record {nethunt_record_id} with fields: {mapped_fields} and the api key {encoded_credentials}")
             # Make sure this function is async and awaitable
-            await update_nethunt_record(nethunt_record_id, mapped_fields, encoded_credentials)
+            update_nethunt_record(nethunt_record_id, mapped_fields, encoded_credentials)
 
 import json
 
-def extract_person_data_for_nethunt(pipedrive_data: dict) -> str:
-    """Return NetHunt-compatible fieldActions as a JSON string with proper key quotes."""
-    data = pipedrive_data.get("data", {})
+import os
 
-    name = f"{data.get('first_name', '')} {data.get('last_name', '')}".strip()
-    priority = data.get("priority", "")
-    creator = data.get("owner_name", "")
-    assignee = data.get("user_id", {}).get("name", "") if isinstance(data.get("user_id"), dict) else ""
-    due_date = data.get("next_activity_date", "")
-    description = data.get("notes", "")
+base_dir = os.path.dirname(os.path.abspath(__file__))
+json_path = os.path.join(base_dir, "key_name_mapping.json")
 
-    field_actions = {
-        "Name": {"overwrite": True, "add": name},
-        "Priority": {"overwrite": True, "add": priority},
-        "Description": {"overwrite": False, "add": description},
-        "All day": {"overwrite": True, "add": False}
+with open(json_path, "r") as f:
+    KEY_NAME_MAPPING = json.load(f)
+    
+ALLOWED_FIELDS = {
+    "Name": "Name",
+    "email": "Email",
+    "phone": "Phone",
+    "Stage": "Stage",
+    "Pipeline": "Pipeline",
+    "b4657a3853fbae1a21222a1f6265dffd1111fc55": "First Name", 
+    "ec3c9109c278d7cb22cd6d63187fb63b9c03af21": "Address",
+    # "fb3c253d2c30416d52191beb3c443f96133c571c": "West Chester Availablity",
+    # "4f01b3626ca1c664c9dec11aad381c405e73bc5d": "Philadelphia Availability",
+    # "4d7a7e1d75b47934b2734ca8d4e270b5e80dd40f": "Main Line Availability",
+    "fe16f95ae1442816f87a9c4ee18b5056f8743030": "Preferred Days / Availability",
+    "e042a0ac93f8d43206b3a96cbe21f24610b74276": "Chef Assigned",
+    "d64ea5791d2efd1b160cba0b4dde0d997d1b513d": "Home Assistant Assigned",
+    "73950ad98eab1e4948d742be2fa34897e457a2f4": "Past Providers",
+    # "3d5c1f11c39686c2d445c279f00ee873c3aa5847": "Services Recieved",
+    "ac2082c8795591a9fb4c4ee0ee6062a11daea132": "Service Interest",
+    "71b7dcc1f0a176ed854b4eb3c2eaa7bf33070908": "Last name"
+}
+
+def extract_person_data_for_nethunt(deal_data):
+    # Mapping of Pipedrive field keys to NetHunt field names
+    key_mapping = {
+        # "b4657a3853fbae1a21222a1f6265dffd1111fc55": "First Name", 
+    "ec3c9109c278d7cb22cd6d63187fb63b9c03af21": "Address",
+    # "fb3c253d2c30416d52191beb3c443f96133c571c": "West Chester Availablity",
+    # "4f01b3626ca1c664c9dec11aad381c405e73bc5d": "Philadelphia Availability",
+    # "4d7a7e1d75b47934b2734ca8d4e270b5e80dd40f": "Main Line Availability",
+    "fe16f95ae1442816f87a9c4ee18b5056f8743030": "Preferred Days / Availability",
+    "e042a0ac93f8d43206b3a96cbe21f24610b74276": "Chef Assigned",
+    "d64ea5791d2efd1b160cba0b4dde0d997d1b513d": "Home Assistant Assigned",
+    "73950ad98eab1e4948d742be2fa34897e457a2f4": "Past Providers",
+    # "3d5c1f11c39686c2d445c279f00ee873c3aa5847": "Services Recieved",
+    "ac2082c8795591a9fb4c4ee0ee6062a11daea132": "Service Interest",
+    "71b7dcc1f0a176ed854b4eb3c2eaa7bf33070908": "Last name"
     }
 
-    return json.dumps(field_actions, ensure_ascii=False, indent=2)
+    data = deal_data.get("data", {})
+    related = deal_data.get("related_objects", {})
+
+    extracted = {}
+
+    # Extract from person
+    person = data.get("person_id", {})
+    extracted["Name"] = person.get("name", "")
+    
+    extracted["Email"] = [
+        email.get("value") for email in person.get("email", []) if email.get("value")
+    ]
+
+    extracted["Phone"] = [
+        phone.get("value") for phone in person.get("phone", []) if phone.get("value")
+    ]
+
+    extracted["Client Lost Reasons"] = [
+        lost_reason.get("value") for lost_reason in person.get("lost_reason", []) if lost_reason.get("value")
+    ]
+
+    # Extract stage and pipeline
+    stage_id = str(data.get("stage_id", ""))
+    extracted["Stage"] = stage_id
+
+    pipeline_id = str(data.get("pipeline_id", ""))
+    extracted["Pipeline"] = pipeline_id
+
+    # Add placeholder for Client Status
+    extracted["Client Status"] = ""
+
+    # Extract custom fields by key
+    for key, label in key_mapping.items():
+        extracted[label] = data.get(key, "")
+
+    # Build final fieldActions payload
+    field_actions = {
+        key: {
+            "overwrite": True,
+            "add": value if value else ""
+        } for key, value in extracted.items()
+    }
+
+    return {"fieldActions": field_actions}
 
 
 
-def update_nethunt_record(record_id, field_actions, api_key):
+def update_nethunt_record(record_id: str, field_actions: dict, api_key: str):
     url = f"https://nethunt.com/api/v1/zapier/actions/update-record/{record_id}"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Basic {api_key}"
     }
 
-    payload = {
-        "fieldActions": field_actions
-    }
+    payload = field_actions  
+
+    print("Updating NetHunt record with payload:")
+    print(json.dumps(payload, indent=2))  # Log only
 
     response = requests.post(url, headers=headers, json=payload)
 
