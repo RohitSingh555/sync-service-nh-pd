@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 import httpx
 import base64
 
@@ -14,7 +15,10 @@ class NetHuntClient:
             headers=self.headers
         )
 
-    async def get_recent_records(self, folder_id, since, limit=None, field_names=None):
+    async def get_recent_records(self, folder_id, since=None, limit=None, field_names=None):
+        if since is None:
+            since = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+
         params = {
             "since": since,
             "limit": limit,
