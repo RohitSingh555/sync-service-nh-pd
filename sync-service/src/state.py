@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 import sqlite3
 
 # Initialize SQLite database
@@ -20,14 +21,16 @@ CREATE TABLE IF NOT EXISTS mappings (
 """)
 conn.commit()
 
+def set_last_poll(updated_at_string: str):
+    cursor.execute("REPLACE INTO state (key, value) VALUES (?, ?)", ('last_nethunt_poll', updated_at_string))
+    conn.commit()
+
 def get_last_poll():
     cursor.execute("SELECT value FROM state WHERE key = 'last_nethunt_poll'")
     result = cursor.fetchone()
-    return int(result[0]) if result else None
-
-def set_last_poll(ts):
-    cursor.execute("REPLACE INTO state (key, value) VALUES ('last_nethunt_poll', ?)", (ts,))
-    conn.commit()
+    if result:
+        return result[0]  # Already stored as ISO 8601 string like "2025-06-17T12:45:02.000Z"
+    return None
 
 def map_pd_to_nh(pd_id, nh_id):
     cursor.execute("REPLACE INTO mappings (pd_id, nh_id) VALUES (?, ?)", (pd_id, nh_id))

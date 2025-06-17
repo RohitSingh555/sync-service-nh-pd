@@ -24,6 +24,8 @@ class NetHuntClient:
                 params.setdefault("fieldName", []).append(field_name)
 
         resp = await self.client.get(f"/zapier/triggers/updated-record/{folder_id}", params=params)
+        
+        print(f"Response status code: {resp}")
         resp.raise_for_status()
         return resp.json()
 

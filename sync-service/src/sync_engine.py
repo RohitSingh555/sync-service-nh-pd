@@ -3,8 +3,6 @@ import requests
 import base64
 import httpx
 import logging
-from src.state import get_nh_by_pd, map_pd_to_nh, map_nh_to_pd, get_pd_by_nh
-from src.clients.pipedrive import get_item
 from src.clients.nethunt import nethunt_client
 
 
