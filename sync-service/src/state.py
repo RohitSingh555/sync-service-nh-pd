@@ -49,3 +49,15 @@ def get_pd_by_nh(nh_id):
     cursor.execute("SELECT pd_id FROM mappings WHERE nh_id = ?", (nh_id,))
     result = cursor.fetchone()
     return result[0] if result else None
+
+
+def get_last_task_created_at():
+    cursor.execute("SELECT value FROM state WHERE key = 'last_task_created_at'")
+    result = cursor.fetchone()
+    if result:
+        return result[0]
+    return None
+
+def set_last_task_created_at(created_at_string: str):
+    cursor.execute("REPLACE INTO state (key, value) VALUES (?, ?)", ('last_task_created_at', created_at_string))
+    conn.commit()

@@ -3,13 +3,18 @@ import requests
 import base64
 import httpx
 import logging
-from src.clients.nethunt import nethunt_client
+import os
+import json
+from dotenv import load_dotenv
+from src.create_activity import format_due_date_iso, nethunt_activity_exists_by_name_returns_results
+load_dotenv()
+
 
 
 # Nethunt
-
-EMAIL = "agilemorphsolutions@gmail.com"
-API_KEY = "30741f0a-d62d-4703-b0d4-0a03fe6f8782"
+NETHUNT_API_KEY = os.getenv("NETHUNT_API_KEY")
+NETHUNT_EMAIL = os.getenv("NETHUNT_EMAIL")
+PIPEDRIVE_API_TOKEN = os.getenv("PIPEDRIVE_API_TOKEN")
 
 BASE_URL = "https://nethunt.com/api/v1/zapier/actions/update-record"
 
@@ -18,20 +23,10 @@ def get_auth_header(email: str, api_key: str):
     return {"Authorization": f"Basic {token}"}
 
 async def update_nethunt_record(record_id: str, fields: dict):
-    """
-    Update a NetHunt record by its ID with the given field actions.
-
-    :param record_id: NetHunt Record ID
-    :param fields: Dictionary of fields to update in the format:
-        {
-            "Name": {"overwrite": True, "add": "John Doe"},
-            "Priority": {"remove": "", "add": "High"},
-        }
-    """
     url = f"{BASE_URL}/{record_id}"
     headers = {
         "Content-Type": "application/json",
-        **get_auth_header(EMAIL, API_KEY)
+        **get_auth_header(NETHUNT_EMAIL, NETHUNT_API_KEY)
     }
 
     payload = {
@@ -49,12 +44,9 @@ async def update_nethunt_record(record_id: str, fields: dict):
 
 
 # PIPEDRIVE_API
-
-
-PIPEDRIVE_API_TOKEN = "e68c1501ba119489fc7690a81488e504f7c530f4"
 PIPEDRIVE_BASE_URL = "https://api.pipedrive.com/v1"
 
-async def handle_activity_webhook(body: dict):
+async def handle_activity_update_webhook(body: dict):
     current = body.get("data", {})
     previous = body.get("previous", {})
     activity_id = str(current.get("id"))
@@ -72,76 +64,38 @@ async def handle_activity_webhook(body: dict):
 
     logging.info(f"Activity {activity_id} updated with fields: {updated_fields}")
 
-    person_id = current.get("person_id")
-    if not person_id:
-        logging.warning(f"No person_id associated with activity {activity_id}")
+    # Always re-fetch the full activity details
+    full_activity = await fetch_pipedrive_activity_by_id(activity_id)
+    if not full_activity:
+        logging.warning(f"Could not fetch full activity data for ID {activity_id}")
         return
 
-    headers = {
-        "Accept": "application/json",
-        "x-api-token": PIPEDRIVE_API_TOKEN
-    }
+    logging.debug(f"Full activity data: {full_activity}")
 
-    async with httpx.AsyncClient() as client:
-        # Fetch person
-        person_url = f"{PIPEDRIVE_BASE_URL}/persons/{person_id}"
-        person_response = await client.get(person_url, headers=headers)
+    # Extract mapped fields from full activity
+    try:
+        mapped_fields = extract_activity_data_for_nethunt(full_activity)
+        logging.info(f"Mapped fields for NetHunt Update: {mapped_fields}")
+    except Exception as e:
+        logging.error(f"Error mapping activity fields for NetHunt Update: {e}")
+        return
 
-        if person_response.status_code != 200:
-            logging.error(f"Failed to fetch person {person_id}: {person_response.status_code} - {person_response.text}")
-            return
+    nethunt_record = await nethunt_activity_exists_by_name_returns_results(full_activity.get("subject"))
 
-        person_data = person_response.json()
-        logging.info(f"Person data for ID {person_id}: {person_data}")
-
-        mapped_fields = extract_person_data_for_nethunt(person_data)
-        logging.info(f"Mapped fields for NetHunt: {mapped_fields}")
-
-        # ------------------------
-        # Deal fetch and folder/record ID extraction
-        # ------------------------
-        deal_id = current.get("deal_id")
-        nethunt_folder_id = None
-        nethunt_record_id = None
-
-        if deal_id:
-            deal_url = f"{PIPEDRIVE_BASE_URL}/deals/{deal_id}"
-            deal_response = await client.get(deal_url, headers=headers)
-
-            if deal_response.status_code != 200:
-                logging.error(f"Failed to fetch deal {deal_id}: {deal_response.status_code} - {deal_response.text}")
-                return
-
-            deal_data = deal_response.json()
-            logging.info(f"Deal data for ID {deal_id}: {deal_data}")
-
-            # Hardcoded keys
-            record_id_key = "55eb66f5d38ea77a03e23d3f0f3dd31b891739d1"
-            folder_id_key = "6cff18ff6ad02610ded066fab268f76d7d6431c9"
-
-            deal_fields = deal_data.get("data", {})
-            nethunt_folder_id = deal_fields.get(folder_id_key)
-            nethunt_record_id = deal_fields.get(record_id_key)
-
-            if not nethunt_folder_id or not nethunt_record_id:
-                logging.warning(f"NetHunt folder or record ID not found in deal {deal_id}")
-                return
-
-            logging.info(f"NetHunt folder_id: {nethunt_folder_id}, record_id: {nethunt_record_id}")
-
-        # ------------------------
-        # Proceed to update NetHunt record
-        # ------------------------
-        if nethunt_record_id:
-            email = "agilemorphsolutions@gmail.com"
-            api_key = "30741f0a-d62d-4703-b0d4-0a03fe6f8782"
-            credentials = f"{email}:{api_key}"
+    # -----------------------
+    # Proceed to update NetHunt record
+    # ------------------------
+    if nethunt_record:
+        print(f"Updating NetHunt record {nethunt_record[0].get("id")} with fields: {mapped_fields}")
+        try:
+            credentials = f"{NETHUNT_EMAIL}:{NETHUNT_API_KEY}"
             encoded_credentials = base64.b64encode(credentials.encode()).decode()
 
-            # Make sure this function is async and awaitable
-            await update_nethunt_record(nethunt_record_id, mapped_fields, encoded_credentials)
+            update_nethunt_record(nethunt_record[0].get("id"), mapped_fields, encoded_credentials)
+            logging.info(f"NetHunt record {nethunt_record[0].get("id")} updated successfully.")
+        except Exception as e:
+            logging.error(f"Failed to update NetHunt record {nethunt_record[0].get("id")}: {e}")
 
-import json
 
 def extract_person_data_for_nethunt(pipedrive_data: dict) -> str:
     """Return NetHunt-compatible fieldActions as a JSON string with proper key quotes."""
@@ -149,20 +103,97 @@ def extract_person_data_for_nethunt(pipedrive_data: dict) -> str:
 
     name = f"{data.get('first_name', '')} {data.get('last_name', '')}".strip()
     priority = data.get("priority", "")
-    creator = data.get("owner_name", "")
-    assignee = data.get("user_id", {}).get("name", "") if isinstance(data.get("user_id"), dict) else ""
-    due_date = data.get("next_activity_date", "")
+    due_date = data.get("due_date")
+    formatted_due_date = format_due_date_iso(due_date) if due_date else None
     description = data.get("notes", "")
 
     field_actions = {
         "Name": {"overwrite": True, "add": name},
         "Priority": {"overwrite": True, "add": priority},
         "Description": {"overwrite": False, "add": description},
-        "All day": {"overwrite": True, "add": False}
+        "All day": {"overwrite": True, "add": False},
+        "Due date": formatted_due_date,
     }
 
     return json.dumps(field_actions, ensure_ascii=False, indent=2)
 
+def map_nethunt_to_pipedrive_activity(nethunt_record: dict, deal_ids: list[str]) -> dict:
+    fields = nethunt_record.get("fields", {})
+    deal_id = int(deal_ids[0]) if deal_ids else None
+    print(f"Mapping NetHunt record to Pipedrive activity: {fields}, deal_id: {deal_id}")
+
+    priority_reverse_map = {
+        "High": 191,
+        "Medium": 190,
+        "Low": 189
+    }
+
+    priority_label = fields.get("Priority")
+    priority = priority_reverse_map.get(priority_label, 189)
+
+    due_date_raw = fields.get("Due date", "")
+    due_date = None
+    due_time = None
+
+    if "T" in due_date_raw:
+        # ISO format: 2025-06-19T15:00:00.000
+        try:
+            date_part, time_part = due_date_raw.split("T")
+            due_date = date_part
+            due_time = time_part.split("Z")[0].split(".")[0]  # Extract HH:MM:S
+        except Exception as e:
+            print(f"Failed to parse Due date from NetHunt: {due_date_raw}, error: {e}")
+    else:
+        due_date = due_date_raw or None
+
+    return {
+        "subject": fields.get("Name"),
+        "note": fields.get("Description"),
+        "due_date": due_date,
+        # "due_time": due_time,
+        "deal_id": deal_id,
+        "priority": priority,
+        "owner_id": 17872313,
+        "location": None,
+        "duration": None,
+        "participants": [],
+        "attendees": []
+    }
+
+
+def map_nethunt_to_pipedrive_activity_no_deal(nethunt_record: dict) -> dict:
+    fields = nethunt_record.get("fields", {})
+    print(f"Mapping NetHunt record to Pipedrive activity (update): {fields}")
+
+    # Reverse map from label to numeric priority
+    priority_reverse_map = {
+        "High": 191,
+        "Medium": 190,
+        "Low": 189
+    }
+
+    priority_label = fields.get("Priority")
+    priority = priority_reverse_map.get(priority_label, 189)
+
+    due_date_raw = fields.get("Due date", "")
+    due_date = None
+    due_time = None
+
+    if "T" in due_date_raw:
+        try:
+            date_part, time_part = due_date_raw.split("T")
+            due_date = date_part
+            due_time = time_part.split("Z")[0].split(".")[0]
+        except Exception as e:
+            print(f"Failed to parse Due date from NetHunt: {due_date_raw}, error: {e}")
+    else:
+        due_date = due_date_raw or None
+
+    return {
+        "note": fields.get("Description"),
+        "due_date": due_date,
+        "priority": priority
+    }
 
 
 def update_nethunt_record(record_id, field_actions, api_key):
@@ -172,14 +203,144 @@ def update_nethunt_record(record_id, field_actions, api_key):
         "Authorization": f"Basic {api_key}"
     }
 
-    payload = {
-        "fieldActions": field_actions
-    }
 
-    response = requests.post(url, headers=headers, json=payload)
+    response = requests.post(url, headers=headers, json=field_actions)
 
     if response.status_code == 200:
         return response.json()
     else:
         print(f"Error {response.status_code}: {response.text}")
         response.raise_for_status()
+
+
+async def create_pipedrive_activity(activity_data: dict):
+    url = f"https://api.pipedrive.com/api/v2/activities"
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "x-api-token": PIPEDRIVE_API_TOKEN
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(url, headers=headers, json=activity_data)
+            response.raise_for_status()
+            result = response.json()
+            logging.info(f"Created activity in Pipedrive: {result}")
+            return result
+        except httpx.HTTPStatusError as e:
+            logging.error(f"Failed to create activity: {e.response.status_code} - {e.response.text}")
+        except Exception as e:
+            logging.error(f"Unexpected error during activity creation: {e}")
+
+
+import re
+import json
+import logging
+
+def extract_activity_data_for_nethunt(activity: dict) -> dict:
+    try:
+        subject = activity.get("subject")
+        due_date = activity.get("due_date")
+        user_id = activity.get("user_id")
+        is_done = activity.get("done", False)
+        note = activity.get("note") or ""
+        priority_value = activity.get("priority")
+
+        # Priority mapping
+        priority = {191: "High", 190: "Medium"}.get(priority_value, "Low")
+
+        # Format due date
+        formatted_due_date = format_due_date_iso(due_date) if due_date else None
+
+        # Assignee email matching
+        target_email = "contact@elevated-lifestyle.com"
+        activity_str = json.dumps(activity)
+        assignee = [target_email] if re.search(re.escape(target_email), activity_str, re.IGNORECASE) else []
+
+        logging.debug(f"Mapping activity to NetHunt fields: subject='{subject}', due_date='{due_date}', assignee={assignee}, priority='{priority}'")
+
+        # Final fieldActions dict
+        field_actions = {
+            # "Name": {
+            #     "overwrite": False,
+            #     "add": subject
+            # },
+            "Due date": {
+                "overwrite": True,
+                "add": formatted_due_date
+            },
+            # "Creator": {
+            #     "overwrite": True,
+            #     "add": str(user_id)
+            # },
+            "Description": {
+                "overwrite": True,
+                "add": note
+            },
+            "Priority": {
+                "overwrite": True,
+                "add": priority
+            }
+        }
+
+        # Only add assignee if not empty
+        if assignee:
+            field_actions["Assignee"] = {
+                "overwrite": True,
+                "add": assignee
+            }
+        print(f"Extracted field actions for NetHunt: {field_actions}")  
+        return {
+            "fieldActions": field_actions
+        }
+
+    except Exception as e:
+        logging.error(f"Error extracting fields for NetHunt: {e}")
+        raise
+
+
+async def fetch_pipedrive_activity_by_id(activity_id: int) -> dict | None:
+
+    url = f"{PIPEDRIVE_BASE_URL}/activities/{activity_id}"
+    headers = {
+        "x-api-token": PIPEDRIVE_API_TOKEN,
+        "Accept": "application/json"
+    }
+    params = {}
+
+    logging.debug(f"Fetching activity ID={activity_id} ")
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, headers=headers, params=params)
+            logging.debug(f"Pipedrive GET {url} - status {response.status_code}")
+            response.raise_for_status()
+            result = response.json()
+            logging.debug(f"Fetched activity {activity_id} data: {result}")
+            return result.get("data")
+        except httpx.HTTPStatusError as e:
+            logging.error(f"HTTP error fetching activity {activity_id}: {e.response.status_code} - {e.response.text}")
+        except Exception as e:
+            logging.error(f"Unexpected error fetching activity {activity_id}: {e}")
+    return None
+
+async def update_pipedrive_activity(activity_id: int, activity_data: dict):
+    url = f"https://api.pipedrive.com/api/v2/activities/{activity_id}"
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "x-api-token": PIPEDRIVE_API_TOKEN
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.patch(url, headers=headers, json=activity_data)
+            response.raise_for_status()
+            result = response.json()
+            logging.info(f"Updated Pipedrive activity {activity_id}: {result}")
+            return result
+        except httpx.HTTPStatusError as e:
+            logging.error(f"Failed to update activity {activity_id}: {e.response.status_code} - {e.response.text}")
+        except Exception as e:
+            logging.error(f"Unexpected error during activity update {activity_id}: {e}")

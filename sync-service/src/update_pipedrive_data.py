@@ -1,13 +1,17 @@
 import httpx
 import logging
+import os
 
-PIPEDRIVE_API_KEY = "e68c1501ba119489fc7690a81488e504f7c530f4"  # Replace with your actual API key
+from dotenv import load_dotenv
+load_dotenv()
+
+PIPEDRIVE_API_TOKEN = os.getenv("PIPEDRIVE_API_TOKEN")  # Replace with your actual API key
 PIPEDRIVE_API_BASE_URL = "https://api.pipedrive.com/v1"
 
 async def update_pipedrive_deal(deal_id: str, payload: dict):
     url = f"{PIPEDRIVE_API_BASE_URL}/deals/{deal_id}"
     headers = {
-        "x-api-token": PIPEDRIVE_API_KEY,
+        "x-api-token": PIPEDRIVE_API_TOKEN,
         "Accept": "application/json",
         "Content-Type": "application/json"
     }
