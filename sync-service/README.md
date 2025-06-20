@@ -1,67 +1,125 @@
-# Sync Service (FastAPI)
+# 🚀 FastAPI Deployment with Gunicorn & Nginx (Ubuntu)
 
-This is a lightweight sync service built with **FastAPI**, designed for high-performance asynchronous API endpoints.
+This project uses FastAPI, served by Gunicorn + UvicornWorker, behind an Nginx reverse proxy.
 
-## 🔧 Setup Instructions
+---
 
-### 1. Clone and Connect
-
-If you're not already on the server or project directory:
+## 🛠️ Setup
 
 ```bash
-ssh your-user@your-server-ip
-cd ~/fastapi-app/sync-service
-```
+# Install dependencies
+sudo apt update
+sudo apt install python3-venv python3-pip nginx -y
 
-### 2. Create and Activate Virtual Environment
-
-```bash
+# Clone project and set up virtual environment
+cd /root/fastapi-app/sync-service
 python3 -m venv env
 source env/bin/activate
-```
-
-### 3. Install Dependencies
-
-```bash
 pip install -r requirements.txt
 ```
 
-> Or install manually if `requirements.txt` is not yet created:
+---
+
+## 🔥 Gunicorn + systemd
+
+Create the systemd service:
+
+```ini
+# /etc/systemd/system/fastapi.service
+[Unit]
+Description=FastAPI with Gunicorn
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/root/fastapi-app/sync-service
+ExecStart=/root/fastapi-app/sync-service/env/bin/gunicorn -k uvicorn.workers.UvicornWorker src.main:app --bind 127.0.0.1:8000
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start it:
 
 ```bash
-pip install fastapi uvicorn[standard]
+sudo systemctl daemon-reload
+sudo systemctl enable fastapi
+sudo systemctl start fastapi
+sudo systemctl status fastapi
 ```
 
-### 4. Run the FastAPI App
+---
+
+## 🌐 Nginx Reverse Proxy
+
+Create a config file:
+
+```nginx
+# /etc/nginx/sites-available/fastapi
+server {
+    listen 80;
+    server_name your_server_ip_or_domain;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Enable site and restart Nginx:
 
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-- `main:app` refers to the `app` instance inside your `main.py` file.
-- `--reload` is helpful during development for auto-reload.
-
----
-
-## 📁 Project Structure
-
-```
-sync-service/
-├── env/                  # Virtual environment
-├── main.py               # FastAPI entry point
-├── requirements.txt      # Dependencies (optional)
-└── README.md             # You're here
+sudo ln -s /etc/nginx/sites-available/fastapi /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
 ```
 
 ---
 
-## 📌 Tips
+## 🔍 Logs & Debugging
 
-- Access your API at `http://<your-server-ip>:8000`
-- Swagger UI available at `http://<your-server-ip>:8000/docs`
+```bash
+# View app logs
+sudo journalctl -u fastapi.service -f
+
+# Nginx logs
+sudo tail -f /var/log/nginx/access.log
+sudo tail -f /var/log/nginx/error.log
+
+# Check if app is live
+curl http://127.0.0.1:8000
+curl http://your_public_ip
+```
 
 ---
 
-## 📜 License
+## 🔐 (Optional) HTTPS via Certbot
 
-MIT License
+```bash
+sudo apt install certbot python3-certbot-nginx -y
+sudo certbot --nginx -d yourdomain.com
+```
+
+---
+
+## ✅ Firewall & System Check
+
+```bash
+# Allow HTTP through firewall
+sudo ufw allow 80
+
+# Check ports
+sudo lsof -i -P -n | grep LISTEN
+
+# Clean disk/logs
+sudo apt autoremove -y && sudo apt autoclean -y
+sudo journalctl --vacuum-time=7d
+df -h
+```
+
+---

@@ -204,6 +204,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+@app.get("/")
+def read_root():
+    return {"message": "Hello from FastAPI"}
 
 @app.post("/webhook")
 async def pd_webhook(req: Request):
