@@ -136,11 +136,16 @@ def map_nethunt_to_pipedrive_activity(nethunt_record: dict, deal_ids: list[str])
     due_time = None
 
     if "T" in due_date_raw:
-        # ISO format: 2025-06-19T15:00:00.000
         try:
             date_part, time_part = due_date_raw.split("T")
             due_date = date_part
-            due_time = time_part.split("Z")[0].split(".")[0]  # Extract HH:MM:S
+            try:
+                time_str = time_part.split("Z")[0].split(".")[0]  # e.g., "15:30:00"
+                hh_mm = ":".join(time_str.split(":")[:2])         # Extract "15:30"
+                due_time = hh_mm
+            except Exception as e:
+                due_time = None
+                print(f"Failed to extract HH:mm from time: {time_part}, error: {e}")
         except Exception as e:
             print(f"Failed to parse Due date from NetHunt: {due_date_raw}, error: {e}")
     else:
@@ -150,10 +155,11 @@ def map_nethunt_to_pipedrive_activity(nethunt_record: dict, deal_ids: list[str])
         "subject": fields.get("Name"),
         "note": fields.get("Description"),
         "due_date": due_date,
-        # "due_time": due_time,
+        "due_time": due_time,
         "deal_id": deal_id,
         "priority": priority,
         "owner_id": 17872313,
+        "type": "task",
         "location": None,
         "duration": None,
         "participants": [],
@@ -256,7 +262,7 @@ def extract_activity_data_for_nethunt(activity: dict) -> dict:
         # Assignee email matching
         target_email = "contact@elevated-lifestyle.com"
         activity_str = json.dumps(activity)
-        assignee = [target_email] if re.search(re.escape(target_email), activity_str, re.IGNORECASE) else []
+        assignee = [target_email]
 
         logging.debug(f"Mapping activity to NetHunt fields: subject='{subject}', due_date='{due_date}', assignee={assignee}, priority='{priority}'")
 

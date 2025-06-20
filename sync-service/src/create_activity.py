@@ -128,7 +128,7 @@ async def process_created_activity(activity: dict):
     # Use regex to search for specific email in the entire activity structure
     target_email = "contact@elevated-lifestyle.com"
     activity_str = json.dumps(activity)
-    assignee = [target_email] if re.search(re.escape(target_email), activity_str, re.IGNORECASE) else []
+    assignee = ["contact@elevated-lifestyle.com"]
     logging.info(f"Extracted assignee email: {assignee if assignee else 'None found'}")
 
     # Fetch NetHunt linked record from deal_id
@@ -147,7 +147,7 @@ async def process_created_activity(activity: dict):
         "Creator": str(user_id),
         "Description": note,
         "All day": True,
-        "Assignee": assignee,
+        "Assignee": ["Marie <contact@elevated-lifestyle.com>"],
         "Priority": priority
     }
 
