@@ -27,8 +27,7 @@ logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler("error_logs.txt"),
-        logging.StreamHandler()
+        logging.StreamHandler()  # Only logs to console
     ]
 )
 
