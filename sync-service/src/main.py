@@ -165,19 +165,20 @@ async def poll_nethunt(interval_seconds=265):
             # Save the latest poll time for next run
             if latest_updated_at:
                 try:
-                    latest_dt = parse_iso8601(latest_updated_at)
+                    latest_dt = parse_iso8601(latest_updated_at) + timedelta(seconds=10)
                     one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
                     if latest_dt < one_hour_ago:
-                        corrected = one_hour_ago.strftime("%Y-%m-%dT%H:%M:%S.%fZ")[:-3] + "Z"
+                        corrected = (one_hour_ago + timedelta(seconds=10)).strftime("%Y-%m-%dT%H:%M:%S.%fZ")[:-3] + "Z"
                         logging.info(f"latest_updated_at too old ({latest_updated_at}), using {corrected}")
                     else:
-                        corrected = latest_updated_at
+                        corrected = latest_dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")[:-3] + "Z"
                         logging.info(f"Updating last poll time to {corrected}")
                     set_last_poll(corrected)
                 except Exception as e:
                     logging.error(f"Failed to save last poll timestamp: {e}")
             else:
                 logging.info("No updatedAt found — skipping last_poll update.")
+
 
         except httpx.HTTPStatusError as e:
             logging.error(f"HTTP error: {e.response.status_code} - {e.response.text}")
