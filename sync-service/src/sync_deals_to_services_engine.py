@@ -62,7 +62,9 @@ async def get_pipedrive_activity_by_subject(title: str, api_token: str, activity
             return None
 
 
-async def does_activity_exist(title: str, api_token: str, activity_type: str = None) -> bool:
+from dateutil.parser import isoparse  # for parsing ISO 8601 timestamps
+
+async def does_activity_exist(title: str, api_token: str, last_poll: str) -> bool:
     url = "https://api.pipedrive.com/api/v2/activities"
     params = {
         "limit": 10,
@@ -71,10 +73,7 @@ async def does_activity_exist(title: str, api_token: str, activity_type: str = N
         "api_token": api_token
     }
 
-    if activity_type:
-        params["type"] = activity_type
-
-    logging.debug(f"Checking existence of activity with title: '{title}' and type: '{activity_type}'")
+    logging.debug(f"Checking existence of activity with title: '{title}'")
 
     async with httpx.AsyncClient() as client:
         try:
@@ -89,17 +88,28 @@ async def does_activity_exist(title: str, api_token: str, activity_type: str = N
 
             for activity in activities:
                 subject = activity.get("subject", "")
-                logging.debug(f"Checking activity subject: '{subject}'")
+                add_time_str = activity.get("add_time")
+                logging.debug(f"Checking activity subject: '{subject}' with add_time: {add_time_str}")
+
                 if subject == title:
                     logging.info(f"Activity with title '{title}' already exists in Pipedrive")
                     return True
 
-            logging.info(f"No activity found with title '{title}' in Pipedrive")
+                # If add_time is earlier than last_poll, return True (already fetched earlier)
+                if add_time_str:
+                    add_time = isoparse(add_time_str)
+                    poll_time = isoparse(last_poll)
+                    if add_time < poll_time:
+                        logging.info(f"Activity with title '{title}' was created before last poll time — skipping")
+                        return True
+
+            logging.info(f"No recent activity found with title '{title}' or older than last_poll in Pipedrive")
             return False
 
         except Exception as e:
             logging.warning(f"Failed to fetch activities from Pipedrive: {e}")
             return False
+
 
 
 async def update_nethunt_record(record_id: str, fields: dict):

@@ -117,7 +117,7 @@ async def poll_nethunt(interval_seconds=265):
                                 continue
 
                             # Check for existing activity
-                            if await does_activity_exist(name, PIPEDRIVE_API_TOKEN):
+                            if await does_activity_exist(name, PIPEDRIVE_API_TOKEN, last_poll):
                                 logging.info(f"Activity '{name}' already exists. Skipping.")
                                 continue
 
@@ -167,25 +167,36 @@ async def poll_nethunt(interval_seconds=265):
                 try:
                     latest_dt = parse_iso8601(latest_updated_at) + timedelta(seconds=10)
                     one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+                    def format_iso8601_millis(dt):
+                        # Always format as 2025-06-19T17:01:02.203Z
+                        return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
                     if latest_dt < one_hour_ago:
-                        corrected = (one_hour_ago + timedelta(seconds=10)).strftime("%Y-%m-%dT%H:%M:%S.%fZ")[:-3] + "Z"
+                        corrected = format_iso8601_millis(one_hour_ago + timedelta(seconds=10))
                         logging.info(f"latest_updated_at too old ({latest_updated_at}), using {corrected}")
                     else:
-                        corrected = latest_dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")[:-3] + "Z"
+                        corrected = format_iso8601_millis(latest_dt)
                         logging.info(f"Updating last poll time to {corrected}")
                     set_last_poll(corrected)
                 except Exception as e:
                     logging.error(f"Failed to save last poll timestamp: {e}")
             else:
-                logging.info("No updatedAt found — skipping last_poll update.")
-
+                # Fallback: update last_poll to now + 10s to ensure progress
+                now_plus_10 = datetime.now(timezone.utc) + timedelta(seconds=10)
+                def format_iso8601_millis(dt):
+                    return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+                corrected = format_iso8601_millis(now_plus_10)
+                logging.info(f"No updatedAt found — fallback updating last_poll to {corrected}")
+                set_last_poll(corrected)
 
         except httpx.HTTPStatusError as e:
             logging.error(f"HTTP error: {e.response.status_code} - {e.response.text}")
         except Exception as e:
             logging.error(f"Unexpected error in poll_nethunt: {e}")
         finally:
-            await asyncio.sleep(interval_seconds)
+            try:
+                await asyncio.sleep(interval_seconds)
+            except Exception as e:
+                logging.error(f"Error during sleep: {e}")
 
 
 @asynccontextmanager

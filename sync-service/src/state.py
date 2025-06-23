@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import sqlite3
+import logging
 
 # Initialize SQLite database
 DB_PATH = "sync_service.db"
@@ -22,15 +23,25 @@ CREATE TABLE IF NOT EXISTS mappings (
 conn.commit()
 
 def set_last_poll(updated_at_string: str):
-    cursor.execute("REPLACE INTO state (key, value) VALUES (?, ?)", ('last_nethunt_poll', updated_at_string))
-    conn.commit()
+    try:
+        cursor.execute("REPLACE INTO state (key, value) VALUES (?, ?)", ('last_nethunt_poll', updated_at_string))
+        conn.commit()
+        logging.info(f"Successfully updated last_nethunt_poll to {updated_at_string}")
+    except Exception as e:
+        logging.error(f"Failed to update last_nethunt_poll: {e}")
 
 def get_last_poll():
-    cursor.execute("SELECT value FROM state WHERE key = 'last_nethunt_poll'")
-    result = cursor.fetchone()
-    if result:
-        return result[0]  # Already stored as ISO 8601 string like "2025-06-17T12:45:02.000Z"
-    return None
+    try:
+        cursor.execute("SELECT value FROM state WHERE key = 'last_nethunt_poll'")
+        result = cursor.fetchone()
+        if result:
+            logging.info(f"Retrieved last_nethunt_poll: {result[0]}")
+            return result[0]
+        logging.info("No last_nethunt_poll found, returning None")
+        return None
+    except Exception as e:
+        logging.error(f"Failed to retrieve last_nethunt_poll: {e}")
+        return None
 
 def map_pd_to_nh(pd_id, nh_id):
     cursor.execute("REPLACE INTO mappings (pd_id, nh_id) VALUES (?, ?)", (pd_id, nh_id))
