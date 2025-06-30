@@ -168,6 +168,24 @@ def map_nethunt_to_pipedrive_activity(nethunt_record: dict, deal_ids: list[str],
     }
 
 
+def map_nethunt_person_fields_to_pipedrive(record_fields: dict) -> dict:
+    key_mapping = {
+        "first_name": "First name",
+        "last_name": "Last name",
+        "email": "Email",
+        "phone": "Phone",
+        "address": "Address",
+    }
+    payload = {}
+    for pipedrive_key, field_name in key_mapping.items():
+        if field_name in record_fields:
+            value = record_fields[field_name]
+            if isinstance(value, list):
+                value = value[0] if value else None
+            payload[pipedrive_key] = value
+    print(f"Mapped person fields for Pipedrive update: {payload}")
+    return payload
+
 def map_nethunt_to_pipedrive_activity_no_deal(nethunt_record: dict) -> dict:
     fields = nethunt_record.get("fields", {})
     print(f"Mapping NetHunt record to Pipedrive activity (update): {fields}")

@@ -235,3 +235,33 @@ async def fetch_nethunt_record_id_by_deal_id(deal_id: int) -> str | None:
     except Exception as e:
         logging.error(f"Error fetching NetHunt record by Deal ID {deal_id}: {e}")
         return None
+
+async def fetch_nethunt_record_id_by_deal_id_for_teams(deal_id: int) -> str | None:
+    """Searches NetHunt for a record using the Pipedrive Deal ID."""
+    if not deal_id:
+        logging.warning("No deal_id provided for NetHunt lookup.")
+        return None
+
+    encoded_query = f'"Pipedrive Record Id":"{deal_id}"'
+    url = f"{NETHUNT_BASE_URL}/zapier/searches/find-record/67e2c9a38fe9ca14e35144d2?query={encoded_query}&limit=10"
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            result = response.json()
+
+            logging.debug(f"NetHunt search result for Deal ID {deal_id}: {result}")
+
+            # NetHunt returned a list, not a dict
+            if isinstance(result, list) and result:
+                record_id = result[0].get("recordId")
+                logging.info(f"Found NetHunt record ID for Deal ID {deal_id}: {record_id}")
+                return record_id
+
+            logging.warning(f"No NetHunt record found for Deal ID: {deal_id}")
+            return None
+
+    except Exception as e:
+        logging.error(f"Error fetching NetHunt record by Deal ID {deal_id}: {e}")
+        return None

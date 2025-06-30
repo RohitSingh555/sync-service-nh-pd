@@ -345,15 +345,117 @@ def extract_person_data_for_nethunt(deal_data):
     # Add placeholder for Client Status
     extracted["Client Status"] = ""
 
+    # Service Interest mapping
+    service_interest_map = {
+        64: "Home Assistant Services",
+        63: "Chef Services",
+        66: "Combo Services"
+    }
+
+    # Availability mappings
+    philadelphia_availability_map = {
+        224: "Yes",
+        225: "No"
+    }
+    west_chester_availability_map = {
+        286: "Yes",
+        287: "No"
+    }
+    main_line_availability_map = {
+        222: "Yes",
+        223: "No"
+    }
+
     # Extract custom fields by key
     for key, label in key_mapping.items():
-        extracted[label] = data.get(key, "")
+        if label == "Service Interest":
+            raw_val = data.get(key, "")
+            logging.debug(f"[Service Interest] Raw value for key {key}: {raw_val}")
+            mapped_val = ""
+            # If it's a dict with "values" (set type)
+            if isinstance(raw_val, dict) and "values" in raw_val:
+                ids = [v.get("id") for v in raw_val.get("values", []) if v.get("id") is not None]
+                mapped_val_list = [service_interest_map.get(i, str(i)) for i in ids]
+                if mapped_val_list:
+                    mapped_val = mapped_val_list if len(mapped_val_list) > 1 else mapped_val_list[0]
+                else:
+                    mapped_val = ""
+            # If it's a dict with "id" (enum type)
+            elif isinstance(raw_val, dict) and "id" in raw_val:
+                mapped_val = service_interest_map.get(raw_val["id"], str(raw_val["id"]))
+            # If it's a direct int
+            elif isinstance(raw_val, int):
+                mapped_val = service_interest_map.get(raw_val, str(raw_val))
+            # If it's a comma-separated string
+            elif isinstance(raw_val, str) and raw_val:
+                try:
+                    ids = [int(x.strip()) for x in raw_val.split(",") if x.strip().isdigit()]
+                    mapped_val_list = [service_interest_map.get(i, str(i)) for i in ids]
+                    if mapped_val_list:
+                        mapped_val = mapped_val_list if len(mapped_val_list) > 1 else mapped_val_list[0]
+                    else:
+                        mapped_val = raw_val  # fallback to raw string if not mapped
+                except Exception as e:
+                    logging.warning(f"[Service Interest] Failed to parse string ids: {raw_val} ({e})")
+                    mapped_val = raw_val
+            else:
+                mapped_val = str(raw_val) if raw_val else ""
+            logging.debug(f"[Service Interest] Mapped value for key {key}: {mapped_val}")
+            extracted[label] = mapped_val
+
+        elif label == "Philadelphia Availability":
+            raw_val = data.get(key, "")
+            val = None
+            if isinstance(raw_val, int):
+                val = raw_val
+            elif isinstance(raw_val, str) and raw_val.isdigit():
+                val = int(raw_val)
+            if val == 224:
+                mapped_val = "Yes"
+            elif val == 225:
+                mapped_val = "No"
+            else:
+                mapped_val = ""
+            extracted[label] = mapped_val
+
+        elif label == "West Chester Area Availability":
+            raw_val = data.get(key, "")
+            val = None
+            if isinstance(raw_val, int):
+                val = raw_val
+            elif isinstance(raw_val, str) and raw_val.isdigit():
+                val = int(raw_val)
+            if val == 286:
+                mapped_val = "Yes"
+            elif val == 287:
+                mapped_val = "No"
+            else:
+                mapped_val = ""
+            extracted[label] = mapped_val
+
+        elif label == "Main Line Availability":
+            raw_val = data.get(key, "")
+            val = None
+            if isinstance(raw_val, int):
+                val = raw_val
+            elif isinstance(raw_val, str) and raw_val.isdigit():
+                val = int(raw_val)
+            if val == 222:
+                mapped_val = "Yes"
+            elif val == 223:
+                mapped_val = "No"
+            else:
+                mapped_val = ""
+            extracted[label] = mapped_val
+
+        else:
+            extracted[label] = data.get(key, "")
 
     # Build final fieldActions payload
     field_actions = {
         key: {
             "overwrite": True,
-            "add": value if value else ""
+            "add": value if value not in ("", [], None) else ""
         } for key, value in extracted.items()
     }
 
@@ -416,7 +518,53 @@ def extract_team_data_for_nethunt(deal_data):
 
     # Extract custom fields by key
     for key, label in key_mapping.items():
-        extracted[label] = data.get(key, "")
+        if label == "Philadelphia Availability":
+            raw_val = data.get(key, "")
+            val = None
+            if isinstance(raw_val, int):
+                val = raw_val
+            elif isinstance(raw_val, str) and raw_val.isdigit():
+                val = int(raw_val)
+            if val == 224:
+                mapped_val = "Yes"
+            elif val == 225:
+                mapped_val = "No"
+            else:
+                mapped_val = ""
+            extracted[label] = mapped_val
+
+        elif label == "West Chester Area Availability":
+            raw_val = data.get(key, "")
+            val = None
+            if isinstance(raw_val, int):
+                val = raw_val
+            elif isinstance(raw_val, str) and raw_val.isdigit():
+                val = int(raw_val)
+            if val == 286:
+                mapped_val = "Yes"
+            elif val == 287:
+                mapped_val = "No"
+            else:
+                mapped_val = ""
+            extracted[label] = mapped_val
+
+        elif label == "Main Line Availability":
+            raw_val = data.get(key, "")
+            val = None
+            if isinstance(raw_val, int):
+                val = raw_val
+            elif isinstance(raw_val, str) and raw_val.isdigit():
+                val = int(raw_val)
+            if val == 222:
+                mapped_val = "Yes"
+            elif val == 223:
+                mapped_val = "No"
+            else:
+                mapped_val = ""
+            extracted[label] = mapped_val
+
+        else:
+            extracted[label] = data.get(key, "")
 
     # Build final fieldActions payload
     field_actions = {

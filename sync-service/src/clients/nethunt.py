@@ -16,6 +16,9 @@ class NetHuntClient:
         )
 
     async def get_recent_records(self, folder_id, since, limit=None, field_names=None):
+        # folder_id is required in the URL path for the endpoint:
+        # /zapier/triggers/updated-record/{folder_id}
+        # So you MUST provide folder_id as an argument and use it in the URL.
         params = {
             "since": since,
             "limit": limit,
@@ -24,6 +27,7 @@ class NetHuntClient:
             for field_name in field_names:
                 params.setdefault("fieldName", []).append(field_name)
 
+        # folder_id is correctly used here:
         resp = await self.client.get(f"/zapier/triggers/updated-record/{folder_id}", params=params)
         
         print(f"Response status code: {resp}")
@@ -71,6 +75,20 @@ class NetHuntClient:
 
     async def get_folder_fields(self, folder_id):
         resp = await self.client.get(f"/zapier/triggers/folder-field/{folder_id}")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def create_comment(self, record_id: str, text: str):
+        resp = await self.client.post(f"/zapier/actions/create-comment/{record_id}", json={"text": text})
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_recent_comments(self, folder_id: str, since: str, limit: int = 10):
+        params = {
+            "since": since,
+            "limit": limit
+        }
+        resp = await self.client.get(f"/zapier/triggers/new-comment/{folder_id}", params=params)
         resp.raise_for_status()
         return resp.json()
 
