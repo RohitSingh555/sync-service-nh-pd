@@ -117,10 +117,11 @@ def extract_person_data_for_nethunt(pipedrive_data: dict) -> str:
 
     return json.dumps(field_actions, ensure_ascii=False, indent=2)
 
-def map_nethunt_to_pipedrive_activity(nethunt_record: dict, deal_ids: list[str]) -> dict:
+def map_nethunt_to_pipedrive_activity(nethunt_record: dict, deal_ids: list[str], person_ids: list[str]) -> dict:
     fields = nethunt_record.get("fields", {})
     deal_id = int(deal_ids[0]) if deal_ids else None
-    print(f"Mapping NetHunt record to Pipedrive activity: {fields}, deal_id: {deal_id}")
+    person_id = int(person_ids[0]) if person_ids else None
+    print(f"Mapping NetHunt record to Pipedrive activity: {fields}, deal_id: {deal_id}, person_id {person_id}")
 
     priority_reverse_map = {
         "High": 191,
@@ -157,12 +158,12 @@ def map_nethunt_to_pipedrive_activity(nethunt_record: dict, deal_ids: list[str])
         "due_date": due_date,
         "due_time": due_time,
         "deal_id": deal_id,
+        "participants": [{"person_id": person_id}],
         "priority": priority,
         "owner_id": 17872313,
         "type": "task",
         "location": None,
         "duration": None,
-        "participants": [],
         "attendees": []
     }
 
@@ -198,6 +199,7 @@ def map_nethunt_to_pipedrive_activity_no_deal(nethunt_record: dict) -> dict:
     return {
         "note": fields.get("Description"),
         "due_date": due_date,
+        "priority": priority,
         "priority": priority
     }
 
@@ -259,27 +261,18 @@ def extract_activity_data_for_nethunt(activity: dict) -> dict:
         # Format due date
         formatted_due_date = format_due_date_iso(due_date) if due_date else None
 
-        # Assignee email matching
+        # Assignee (hardcoded as of now)
         target_email = "contact@elevated-lifestyle.com"
-        activity_str = json.dumps(activity)
         assignee = [target_email]
 
         logging.debug(f"Mapping activity to NetHunt fields: subject='{subject}', due_date='{due_date}', assignee={assignee}, priority='{priority}'")
 
-        # Final fieldActions dict
+        # Build fieldActions
         field_actions = {
-            # "Name": {
-            #     "overwrite": False,
-            #     "add": subject
-            # },
             "Due date": {
                 "overwrite": True,
                 "add": formatted_due_date
             },
-            # "Creator": {
-            #     "overwrite": True,
-            #     "add": str(user_id)
-            # },
             "Description": {
                 "overwrite": True,
                 "add": note
@@ -290,12 +283,13 @@ def extract_activity_data_for_nethunt(activity: dict) -> dict:
             }
         }
 
-        # Only add assignee if not empty
+        # Add assignee if available
         if assignee:
             field_actions["Assignee"] = {
                 "overwrite": True,
                 "add": assignee
             }
+
         print(f"Extracted field actions for NetHunt: {field_actions}")  
         return {
             "fieldActions": field_actions

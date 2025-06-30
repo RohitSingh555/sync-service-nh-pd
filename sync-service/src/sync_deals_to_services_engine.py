@@ -64,7 +64,7 @@ async def get_pipedrive_activity_by_subject(title: str, api_token: str, activity
 
 from dateutil.parser import isoparse  # for parsing ISO 8601 timestamps
 
-async def does_activity_exist(title: str, api_token: str, last_poll: str) -> bool:
+async def does_activity_exist(title: str, api_token: str, activity_type: str = None) -> bool:
     url = "https://api.pipedrive.com/api/v2/activities"
     params = {
         "limit": 10,
@@ -73,7 +73,10 @@ async def does_activity_exist(title: str, api_token: str, last_poll: str) -> boo
         "api_token": api_token
     }
 
-    logging.debug(f"Checking existence of activity with title: '{title}'")
+    if activity_type:
+        params["type"] = activity_type
+
+    logging.debug(f"Checking existence of activity with title: '{title}' and type: '{activity_type}'")
 
     async with httpx.AsyncClient() as client:
         try:
@@ -88,22 +91,12 @@ async def does_activity_exist(title: str, api_token: str, last_poll: str) -> boo
 
             for activity in activities:
                 subject = activity.get("subject", "")
-                add_time_str = activity.get("add_time")
-                logging.debug(f"Checking activity subject: '{subject}' with add_time: {add_time_str}")
-
+                logging.debug(f"Checking activity subject: '{subject}'")
                 if subject == title:
                     logging.info(f"Activity with title '{title}' already exists in Pipedrive")
                     return True
 
-                # If add_time is earlier than last_poll, return True (already fetched earlier)
-                if add_time_str:
-                    add_time = isoparse(add_time_str)
-                    poll_time = isoparse(last_poll)
-                    if add_time < poll_time:
-                        logging.info(f"Activity with title '{title}' was created before last poll time — skipping")
-                        return True
-
-            logging.info(f"No recent activity found with title '{title}' or older than last_poll in Pipedrive")
+            logging.info(f"No activity found with title '{title}' in Pipedrive")
             return False
 
         except Exception as e:
@@ -135,6 +128,7 @@ async def update_nethunt_record(record_id: str, fields: dict):
 
 async def fetch_deal_ids_from_record_links(record_links: list[str]) -> list[str]:
     deal_ids = []
+    person_ids = []
     async with httpx.AsyncClient() as client:
         for record_id in record_links:
             headers = {
@@ -144,13 +138,8 @@ async def fetch_deal_ids_from_record_links(record_links: list[str]) -> list[str]
             try:
                 url = "https://nethunt.com/api/v1/zapier/searches/find-record/67e17578cc9bea52af34a26f"
                 params = {"recordId": record_id}
-                print(f"[DEBUG] Fetching recordId: {record_id} from URL: {url}")
-                print(f"[DEBUG] Headers: {headers}")
-                print(f"[DEBUG] Params: {params}")
 
                 response = await client.get(url, headers=headers, params=params)
-                print(f"[DEBUG] Response status code: {response.status_code}")
-                print(f"[DEBUG] Raw response text: {response.text}")
 
                 response.raise_for_status()
                 result = response.json()
@@ -160,16 +149,18 @@ async def fetch_deal_ids_from_record_links(record_links: list[str]) -> list[str]
                 if result and isinstance(result, list):
                     record = result[0]
                     pipedrive_id = record.get("fields", {}).get("Pipedrive Record Id")
+                    pipedrive_person_id = record.get("fields", {}).get("Pipedrive Person Id")
                     print(f"[DEBUG] Extracted Pipedrive Record Id: {pipedrive_id}")
                     if pipedrive_id:
                         deal_ids.append(pipedrive_id)
+                        person_ids.append(pipedrive_person_id)
                 else:
                     print(f"[DEBUG] No valid record found for record ID: {record_id}")
 
             except Exception as e:
                 logging.warning(f"Failed to fetch Pipedrive Record ID for record {record_id}: {e}")
                 print(f"[ERROR] Exception for record {record_id}: {e}")
-    return deal_ids
+    return deal_ids,person_ids
 
 # PIPEDRIVE_API
 async def handle_deals_webhook(body: dict):

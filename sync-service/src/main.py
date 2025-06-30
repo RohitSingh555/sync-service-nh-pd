@@ -44,6 +44,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
 
+
 async def poll_nethunt(interval_seconds=265):
     folder_ids = [
         NETHUNT_TEAM_FOLDER_ID,
@@ -117,14 +118,14 @@ async def poll_nethunt(interval_seconds=265):
                                 continue
 
                             # Check for existing activity
-                            if await does_activity_exist(name, PIPEDRIVE_API_TOKEN, last_poll):
+                            if await does_activity_exist(name, PIPEDRIVE_API_TOKEN):
                                 logging.info(f"Activity '{name}' already exists. Skipping.")
                                 continue
 
                             try:
                                 record_links = record.get("fields", {}).get("Record links", [])
-                                deal_ids = await fetch_deal_ids_from_record_links(record_links)
-                                activity_payload = map_nethunt_to_pipedrive_activity(record, deal_ids)
+                                deal_ids, person_ids = await fetch_deal_ids_from_record_links(record_links)
+                                activity_payload = map_nethunt_to_pipedrive_activity(record, deal_ids, person_ids)
                                 await create_pipedrive_activity(activity_payload)
                                 logging.info(f"Created Pipedrive activity for '{name}'")
                             except Exception as e:
@@ -165,38 +166,26 @@ async def poll_nethunt(interval_seconds=265):
             # Save the latest poll time for next run
             if latest_updated_at:
                 try:
-                    latest_dt = parse_iso8601(latest_updated_at) + timedelta(seconds=10)
+                    latest_dt = parse_iso8601(latest_updated_at)
                     one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
-                    def format_iso8601_millis(dt):
-                        # Always format as 2025-06-19T17:01:02.203Z
-                        return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
                     if latest_dt < one_hour_ago:
-                        corrected = format_iso8601_millis(one_hour_ago + timedelta(seconds=10))
+                        corrected = one_hour_ago.strftime("%Y-%m-%dT%H:%M:%S.%fZ")[:-3] + "Z"
                         logging.info(f"latest_updated_at too old ({latest_updated_at}), using {corrected}")
                     else:
-                        corrected = format_iso8601_millis(latest_dt)
+                        corrected = latest_updated_at
                         logging.info(f"Updating last poll time to {corrected}")
                     set_last_poll(corrected)
                 except Exception as e:
                     logging.error(f"Failed to save last poll timestamp: {e}")
             else:
-                # Fallback: update last_poll to now + 10s to ensure progress
-                now_plus_10 = datetime.now(timezone.utc) + timedelta(seconds=10)
-                def format_iso8601_millis(dt):
-                    return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-                corrected = format_iso8601_millis(now_plus_10)
-                logging.info(f"No updatedAt found — fallback updating last_poll to {corrected}")
-                set_last_poll(corrected)
+                logging.info("No updatedAt found — skipping last_poll update.")
 
         except httpx.HTTPStatusError as e:
             logging.error(f"HTTP error: {e.response.status_code} - {e.response.text}")
         except Exception as e:
             logging.error(f"Unexpected error in poll_nethunt: {e}")
         finally:
-            try:
-                await asyncio.sleep(interval_seconds)
-            except Exception as e:
-                logging.error(f"Error during sleep: {e}")
+            await asyncio.sleep(interval_seconds)
 
 
 @asynccontextmanager

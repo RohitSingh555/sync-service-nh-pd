@@ -123,3 +123,8 @@ df -h
 ```
 
 ---
+
+
+# To Restart Everything:
+sudo systemctl restart fastapi.service
+sudo systemctl restart nginx
