@@ -212,7 +212,7 @@ async def fetch_nethunt_record_id_by_deal_id(deal_id: int) -> str | None:
         logging.warning("No deal_id provided for NetHunt lookup.")
         return None
 
-    encoded_query = f'"Pipedrive Record Id":"{deal_id}"'
+    encoded_query = f'"Pipedrive Record ID":"{deal_id}"'
     url = f"{NETHUNT_BASE_URL}/zapier/searches/find-record/67e17578cc9bea52af34a26f?query={encoded_query}&limit=10"
 
     try:
@@ -242,7 +242,7 @@ async def fetch_nethunt_record_id_by_deal_id_for_teams(deal_id: int) -> str | No
         logging.warning("No deal_id provided for NetHunt lookup.")
         return None
 
-    encoded_query = f'"Pipedrive Record Id":"{deal_id}"'
+    encoded_query = f'"Pipedrive Record ID":"{deal_id}"'
     url = f"{NETHUNT_BASE_URL}/zapier/searches/find-record/67e2c9a38fe9ca14e35144d2?query={encoded_query}&limit=10"
 
     try:

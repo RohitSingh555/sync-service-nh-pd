@@ -148,9 +148,9 @@ async def fetch_deal_ids_from_record_links(record_links: list[str]) -> list[str]
 
                 if result and isinstance(result, list):
                     record = result[0]
-                    pipedrive_id = record.get("fields", {}).get("Pipedrive Record Id")
-                    pipedrive_person_id = record.get("fields", {}).get("Pipedrive Person Id")
-                    print(f"[DEBUG] Extracted Pipedrive Record Id: {pipedrive_id}")
+                    pipedrive_id = record.get("fields", {}).get("Pipedrive Record ID")
+                    pipedrive_person_id = record.get("fields", {}).get("Pipedrive Person ID")
+                    print(f"[DEBUG] Extracted Pipedrive Record ID: {pipedrive_id}")
                     if pipedrive_id:
                         deal_ids.append(pipedrive_id)
                         person_ids.append(pipedrive_person_id)
@@ -278,7 +278,7 @@ async def handle_deals_webhook(body: dict):
 #     "e042a0ac93f8d43206b3a96cbe21f24610b74276": "Chef Assigned",
 #     "d64ea5791d2efd1b160cba0b4dde0d997d1b513d": "Home Assistant Assigned",
 #     "73950ad98eab1e4948d742be2fa34897e457a2f4": "Past Providers",
-#     # "3d5c1f11c39686c2d445c279f00ee873c3aa5847": "Services Recieved",
+#     # "3d5c1f11c39686c2d445c279f00ee873c3aa5847": "Services Received Updated",
 #     "ac2082c8795591a9fb4c4ee0ee6062a11daea132": "Service Interest",
 #     "71b7dcc1f0a176ed854b4eb3c2eaa7bf33070908": "Last name"
 # }
@@ -295,7 +295,7 @@ def extract_person_data_for_nethunt(deal_data):
         "e042a0ac93f8d43206b3a96cbe21f24610b74276": "Chef Assigned",
         "d64ea5791d2efd1b160cba0b4dde0d997d1b513d": "Home Assistant Assigned",
         "73950ad98eab1e4948d742be2fa34897e457a2f4": "Past Providers",
-        # "3d5c1f11c39686c2d445c279f00ee873c3aa5847": "Services Recieved",
+        # "3d5c1f11c39686c2d445c279f00ee873c3aa5847": "Services Received Updated",
         "ac2082c8795591a9fb4c4ee0ee6062a11daea132": "Service Interest",
         "71b7dcc1f0a176ed854b4eb3c2eaa7bf33070908": "Last name"
     }
@@ -346,11 +346,23 @@ def extract_person_data_for_nethunt(deal_data):
     else:
         extracted["Contact Status"] = "Client"
 
-    # Service Interest mapping
+    # Service Interest and Services Received Updated mapping
     service_interest_map = {
-        64: "Home Assistant Services",
         63: "Chef Services",
+        64: "Home Assistant Services",
         66: "Combo Services"
+    }
+    services_recieved_map = {
+        226: "Chef Service",
+        227: "Home Assistant Service",
+        228: "Combo Service",
+        229: "Organization Service"
+    }
+    # Services Received Updated (checkboxes)
+    services_checkbox_map = {
+        226: "Chef Service",
+        227: "Home Assistant Services",
+        228: "Combo Services"
     }
 
     # Availability mappings
@@ -367,43 +379,66 @@ def extract_person_data_for_nethunt(deal_data):
         223: "No"
     }
 
+    # Always set the three checkbox fields based on the IDs in Services Received Updated
+    # Find the raw value for the Pipedrive set field (3d5c1f11c39686c2d445c279f00ee873c3aa5847)
+    services_received_key = "3d5c1f11c39686c2d445c279f00ee873c3aa5847"
+    raw_val = data.get(services_received_key, "")
+    ids = []
+    if isinstance(raw_val, dict) and "values" in raw_val:
+        ids = [v.get("id") for v in raw_val.get("values", []) if v.get("id") is not None]
+    elif isinstance(raw_val, int):
+        ids = [raw_val]
+    elif isinstance(raw_val, str) and raw_val:
+        try:
+            ids = [int(x.strip()) for x in raw_val.split(",") if x.strip().isdigit()]
+        except Exception:
+            ids = []
+    # Set each checkbox field
+    for pid, nh_field in services_checkbox_map.items():
+        extracted[nh_field] = pid in ids
+
     # Extract custom fields by key
     for key, label in key_mapping.items():
         if label == "Service Interest":
             raw_val = data.get(key, "")
-            logging.debug(f"[Service Interest] Raw value for key {key}: {raw_val}")
             mapped_val = ""
-            # If it's a dict with "values" (set type)
             if isinstance(raw_val, dict) and "values" in raw_val:
                 ids = [v.get("id") for v in raw_val.get("values", []) if v.get("id") is not None]
                 mapped_val_list = [service_interest_map.get(i, str(i)) for i in ids]
-                if mapped_val_list:
-                    mapped_val = mapped_val_list if len(mapped_val_list) > 1 else mapped_val_list[0]
-                else:
-                    mapped_val = ""
-            # If it's a dict with "id" (enum type)
-            elif isinstance(raw_val, dict) and "id" in raw_val:
-                mapped_val = service_interest_map.get(raw_val["id"], str(raw_val["id"]))
-            # If it's a direct int
+                mapped_val = mapped_val_list if len(mapped_val_list) > 1 else (mapped_val_list[0] if mapped_val_list else "")
             elif isinstance(raw_val, int):
                 mapped_val = service_interest_map.get(raw_val, str(raw_val))
-            # If it's a comma-separated string
             elif isinstance(raw_val, str) and raw_val:
                 try:
                     ids = [int(x.strip()) for x in raw_val.split(",") if x.strip().isdigit()]
                     mapped_val_list = [service_interest_map.get(i, str(i)) for i in ids]
-                    if mapped_val_list:
-                        mapped_val = mapped_val_list if len(mapped_val_list) > 1 else mapped_val_list[0]
-                    else:
-                        mapped_val = raw_val  # fallback to raw string if not mapped
-                except Exception as e:
-                    logging.warning(f"[Service Interest] Failed to parse string ids: {raw_val} ({e})")
+                    mapped_val = mapped_val_list if len(mapped_val_list) > 1 else (mapped_val_list[0] if mapped_val_list else raw_val)
+                except Exception:
                     mapped_val = raw_val
             else:
                 mapped_val = str(raw_val) if raw_val else ""
-            logging.debug(f"[Service Interest] Mapped value for key {key}: {mapped_val}")
             extracted[label] = mapped_val
-
+        elif label == "Services Received Updated":
+            raw_val = data.get(key, "")
+            logging.debug(f"[Services Received Updated] Raw value for key {key}: {raw_val}")
+            ids = []
+            if isinstance(raw_val, dict) and "values" in raw_val:
+                ids = [v.get("id") for v in raw_val.get("values", []) if v.get("id") is not None]
+            elif isinstance(raw_val, int):
+                ids = [raw_val]
+            elif isinstance(raw_val, str) and raw_val:
+                try:
+                    ids = [int(x.strip()) for x in raw_val.split(",") if x.strip().isdigit()]
+                except Exception:
+                    ids = []
+            # Set each checkbox field
+            for pid, nh_field in services_checkbox_map.items():
+                extracted[nh_field] = pid in ids
+            # Also keep the mapped label for backward compatibility if needed
+            mapped_val_list = [services_checkbox_map.get(i, str(i)) for i in ids]
+            mapped_val = mapped_val_list if len(mapped_val_list) > 1 else (mapped_val_list[0] if mapped_val_list else "")
+            logging.debug(f"[Services Received Updated] Mapped value for key {key}: {mapped_val}")
+            extracted[label] = mapped_val
         elif label == "Philadelphia Availability":
             raw_val = data.get(key, "")
             val = None

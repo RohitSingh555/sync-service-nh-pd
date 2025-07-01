@@ -43,7 +43,7 @@ async def fetch_deal_ids_from_record_links(record_links: list[str]) -> list[str]
 
                 if result and isinstance(result, list):
                     record = result[0]
-                    pipedrive_id = record.get("fields", {}).get("Pipedrive Record Id")
+                    pipedrive_id = record.get("fields", {}).get("Pipedrive Record ID")
                     print(f"[DEBUG] Extracted Pipedrive ID: {pipedrive_id}")
                     if pipedrive_id:
                         deal_ids.append(pipedrive_id)

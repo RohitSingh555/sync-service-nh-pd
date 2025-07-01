@@ -9,33 +9,65 @@ key_mapping = {
     "e042a0ac93f8d43206b3a96cbe21f24610b74276": "Chef Assigned",
     "d64ea5791d2efd1b160cba0b4dde0d997d1b513d": "Home Assistant Assigned",
     "73950ad98eab1e4948d742be2fa34897e457a2f4": "Past Providers",
-    "3d5c1f11c39686c2d445c279f00ee873c3aa5847": "Services Recieved",
+    "3d5c1f11c39686c2d445c279f00ee873c3aa5847": "Services Received Updated",
     "ac2082c8795591a9fb4c4ee0ee6062a11daea132": "Service Interest",
 }
+
+service_interest_map = {
+    63: "Chef Services",
+    64: "Home Assistant Services",
+    66: "Combo Services"
+}
+services_recieved_map = {
+    226: "Chef Service",
+    227: "Home Assistant Service",
+    228: "Combo Service",
+    229: "Organization Service"
+}
+service_interest_reverse_map = {v: k for k, v in service_interest_map.items()}
+services_recieved_reverse_map = {v: k for k, v in services_recieved_map.items()}
 
 def extract_fields(deal_data, key_mapping):
     extracted_fields = {}
     for key, field_name in key_mapping.items():
-        extracted_fields[field_name] = deal_data.get(key, "")
+        if field_name == "Service Interest":
+            raw_val = deal_data.get(key, "")
+            if isinstance(raw_val, int):
+                extracted_fields[field_name] = service_interest_map.get(raw_val, str(raw_val))
+            elif isinstance(raw_val, str) and raw_val.isdigit():
+                extracted_fields[field_name] = service_interest_map.get(int(raw_val), raw_val)
+            else:
+                extracted_fields[field_name] = raw_val
+        elif field_name == "Services Received Updated":
+            raw_val = deal_data.get(key, "")
+            if isinstance(raw_val, int):
+                extracted_fields[field_name] = services_recieved_map.get(raw_val, str(raw_val))
+            elif isinstance(raw_val, str) and raw_val.isdigit():
+                extracted_fields[field_name] = services_recieved_map.get(int(raw_val), raw_val)
+            else:
+                extracted_fields[field_name] = raw_val
+        else:
+            extracted_fields[field_name] = deal_data.get(key, "")
     return extracted_fields
 
 def update_nethunt_record(deal_data, api_key):
     fields_to_update = extract_fields(deal_data, key_mapping)
-    update_payload = {
-        "fieldActions": {field: {"overwrite": True, "add": value} for field, value in fields_to_update.items()}
-    }
-    # Example API call (replace with actual implementation)
-    print(f"Updating NetHunt record with fields: {update_payload} and API key: {api_key}")
+    # Reverse mapping for update to Pipedrive
+    payload = {}
+    si = fields_to_update.get("Service Interest")
+    if si:
+        if isinstance(si, str):
+            si = [si]
+        ids = [service_interest_reverse_map.get(s) for s in si if s in service_interest_reverse_map]
+        if ids:
+            payload["ac2082c8795591a9fb4c4ee0ee6062a11daea132"] = ids if len(ids) > 1 else ids[0]
+    sr = fields_to_update.get("Services Received Updated")
+    if sr:
+        if isinstance(sr, str):
+            sr = [sr]
+        ids = [services_recieved_reverse_map.get(s) for s in sr if s in services_recieved_reverse_map]
+        if ids:
+            payload["3d5c1f11c39686c2d445c279f00ee873c3aa5847"] = ids if len(ids) > 1 else ids[0]
+    # Add other fields as needed
+    print(f"Updating NetHunt record with fields: {payload} and API key: {api_key}")
 
-# Example usage
-deal_data = {
-    # ...existing deal data...
-    "b4657a3853fbae1a21222a1f6265dffd1111fc55": "Testing",
-    "71b7dcc1f0a176ed854b4eb3c2eaa7bf33070908": "Singh Sahab",
-    "ec3c9109c278d7cb22cd6d63187fb63b9c03af21": "test4@gmail.com",
-    "fe16f95ae1442816f87a9c4ee18b5056f8743030": "2",
-    "e042a0ac93f8d43206b3a96cbe21f24610b74276": "Some",
-    # ...other fields...
-}
-api_key = "YWdpbGVtb3JwaHNvbHV0aW9uc0BnbWFpbC5jb206MzA3NDFmMGEtZDYyZC00NzAzLWIwZDQtMGEwM2ZlNmY4Nzgy"
-update_nethunt_record(deal_data, api_key)

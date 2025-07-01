@@ -216,8 +216,10 @@ async def poll_nethunt(interval_seconds=265):
                     logging.info(f"[poll_nethunt] Got {len(recent_records)} records from folder {folder_id}")
                     for record in recent_records:
                         fields = record.get("fields", {})
+                        logging.info(f"Fields received from NetHunt: {list(fields.keys())}")
                         pipedrive_id = fields.get("Pipedrive Record ID")
                         person_id = fields.get("Pipedrive Person ID")
+                        logging.info(f"Extracted pipedrive_id: {pipedrive_id}, person_id: {person_id}")
                         if person_id:
                             person_payload = map_nethunt_person_fields_to_pipedrive(record)
                             await update_pipedrive_person_v2(person_id, person_payload, PIPEDRIVE_API_TOKEN)
@@ -233,7 +235,6 @@ async def poll_nethunt(interval_seconds=265):
                             except Exception as e:
                                 logging.warning(f"[poll_nethunt] Invalid updatedAt in record {record.get('id')}: {e}")
 
-            # Save the latest poll time for next run
             if latest_updated_at:
                 try:
                     latest_dt = parse_iso8601(latest_updated_at)
