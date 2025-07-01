@@ -263,7 +263,6 @@ async def handle_deals_webhook(body: dict):
             update_nethunt_record(nethunt_team_record_id, team_mapped_fields, encoded_credentials)
 
 
-    
 # ALLOWED_FIELDS = {
 #     "Name": "Name",
 #     "email": "Email",
@@ -288,17 +287,17 @@ def extract_person_data_for_nethunt(deal_data):
     # Mapping of Pipedrive field keys to NetHunt field names
     key_mapping = {
         # "b4657a3853fbae1a21222a1f6265dffd1111fc55": "First Name", 
-    "ec3c9109c278d7cb22cd6d63187fb63b9c03af21": "Address",
-    # "fb3c253d2c30416d52191beb3c443f96133c571c": "West Chester Availablity",
-    # "4f01b3626ca1c664c9dec11aad381c405e73bc5d": "Philadelphia Availability",
-    # "4d7a7e1d75b47934b2734ca8d4e270b5e80dd40f": "Main Line Availability",
-    "fe16f95ae1442816f87a9c4ee18b5056f8743030": "Preferred Days / Availability",
-    "e042a0ac93f8d43206b3a96cbe21f24610b74276": "Chef Assigned",
-    "d64ea5791d2efd1b160cba0b4dde0d997d1b513d": "Home Assistant Assigned",
-    "73950ad98eab1e4948d742be2fa34897e457a2f4": "Past Providers",
-    # "3d5c1f11c39686c2d445c279f00ee873c3aa5847": "Services Recieved",
-    "ac2082c8795591a9fb4c4ee0ee6062a11daea132": "Service Interest",
-    "71b7dcc1f0a176ed854b4eb3c2eaa7bf33070908": "Last name"
+        "ec3c9109c278d7cb22cd6d63187fb63b9c03af21": "Address",
+        # "fb3c253d2c30416d52191beb3c443f96133c571c": "West Chester Availablity",
+        # "4f01b3626ca1c664c9dec11aad381c405e73bc5d": "Philadelphia Availability",
+        # "4d7a7e1d75b47934b2734ca8d4e270b5e80dd40f": "Main Line Availability",
+        "fe16f95ae1442816f87a9c4ee18b5056f8743030": "Preferred Days / Availability",
+        "e042a0ac93f8d43206b3a96cbe21f24610b74276": "Chef Assigned",
+        "d64ea5791d2efd1b160cba0b4dde0d997d1b513d": "Home Assistant Assigned",
+        "73950ad98eab1e4948d742be2fa34897e457a2f4": "Past Providers",
+        # "3d5c1f11c39686c2d445c279f00ee873c3aa5847": "Services Recieved",
+        "ac2082c8795591a9fb4c4ee0ee6062a11daea132": "Service Interest",
+        "71b7dcc1f0a176ed854b4eb3c2eaa7bf33070908": "Last name"
     }
 
     data = deal_data.get("data", {})
@@ -317,10 +316,8 @@ def extract_person_data_for_nethunt(deal_data):
     extracted["Phone"] = [
         phone.get("value") for phone in person.get("phone", []) if phone.get("value")
     ]
-
-    extracted["Client Lost Reasons"] = [
-        lost_reason.get("value") for lost_reason in person.get("lost_reason", []) if lost_reason.get("value")
-    ]
+    
+    extracted["Client Lost Reasons"] = person.get("lost_reason", "")
 
     # Extract stage and pipeline
     stage_id = data.get("stage_id")
@@ -330,7 +327,7 @@ def extract_person_data_for_nethunt(deal_data):
         stage_info = related.get("stage", {}).get(str(stage_id), {})
         stage_name = stage_info.get("name", "")
 
-# Extract pipeline name
+    # Extract pipeline name
     pipeline_id = data.get("pipeline_id")
     pipeline_name = ""
 
@@ -342,8 +339,12 @@ def extract_person_data_for_nethunt(deal_data):
     extracted["Stage"] = stage_name
     extracted["Pipeline"] = pipeline_name
 
-    # Add placeholder for Client Status
-    extracted["Client Status"] = ""
+    # Map Pipedrive 'label' field to NetHunt 'Contact Status' with mapping
+    label_value = data.get("label", "")
+    if label_value == "150":
+        extracted["Contact Status"] = "Lead"
+    else:
+        extracted["Contact Status"] = "Client"
 
     # Service Interest mapping
     service_interest_map = {
@@ -490,9 +491,11 @@ def extract_team_data_for_nethunt(deal_data):
         phone.get("value") for phone in person.get("phone", []) if phone.get("value")
     ]
 
-    extracted["Lost Reason"] = [
-        lost_reason.get("value") for lost_reason in person.get("lost_reason", []) if lost_reason.get("value")
-    ]
+    # Add lost reason from deal top-level field
+    extracted["Lost Reason"] = data.get("lost_reason", "")
+
+    # Map Pipedrive 'label' field to NetHunt 'Role'
+    extracted["Role"] = data.get("label", "")
 
     # Extract stage and pipeline
     stage_id = data.get("stage_id")
